@@ -61,7 +61,7 @@ export function ReaderParagraph({
             ...theme.typography.body,
             color: theme.colors.textPrimary,
             fontSize,
-            lineHeight: Math.round(fontSize * 1.5),
+            lineHeight: fontSize * 1.4,
             textAlign: textAlignment,
           }}
         >

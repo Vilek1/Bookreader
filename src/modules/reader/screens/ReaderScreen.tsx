@@ -344,7 +344,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                       ...theme.typography.body,
                       color: theme.colors.textPrimary,
                       fontSize: readerFontSize,
-                      lineHeight: Math.round(readerFontSize * 1.5),
+                      lineHeight: readerFontSize * 1.4,
                       textAlign: readerTextAlignment,
                     }}
                   >

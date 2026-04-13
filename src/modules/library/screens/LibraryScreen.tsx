@@ -151,18 +151,16 @@ export function LibraryScreen({ navigation }: Props) {
                         >
                           {book.title}
                         </Text>
-                        {booksQuery.data.length > 1 ? (
-                          <Text
-                            numberOfLines={1}
-                            style={{
-                              marginTop: 8,
-                              ...theme.typography.caption,
-                              color: theme.colors.textSecondary,
-                            }}
-                          >
-                            {book.author || 'Author'}
-                          </Text>
-                        ) : null}
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            marginTop: 8,
+                            ...theme.typography.caption,
+                            color: theme.colors.textSecondary,
+                          }}
+                        >
+                          {book.author || 'Author'}
+                        </Text>
                       </View>
                       <View
                         style={{

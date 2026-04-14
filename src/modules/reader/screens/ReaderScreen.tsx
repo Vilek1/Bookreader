@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Alert,
   AppState,
   FlatList,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type ViewToken,
   useWindowDimensions,
 } from 'react-native';
@@ -74,6 +78,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [wordSheet, setWordSheet] = useState<WordSheetState>(null);
   const [isWordSheetExpanded, setIsWordSheetExpanded] = useState(false);
+  const [wordSheetDismissSignal, setWordSheetDismissSignal] = useState(0);
   const [activeSpokenWord, setActiveSpokenWord] = useState<string | null>(
     null,
   );
@@ -293,6 +298,13 @@ export function ReaderScreen({ route, navigation }: Props) {
       );
     },
   );
+  const requestWordSheetDismiss = useCallback(() => {
+    if (!wordSheet) {
+      return;
+    }
+
+    setWordSheetDismissSignal((current) => current + 1);
+  }, [wordSheet]);
 
   if (
     bookQuery.isLoading ||
@@ -434,6 +446,7 @@ export function ReaderScreen({ route, navigation }: Props) {
             currentParagraphIndex,
           )
         }
+        onScrollBeginDrag={requestWordSheetDismiss}
         ListFooterComponent={
           <Pressable
             onPress={() => {
@@ -480,6 +493,11 @@ export function ReaderScreen({ route, navigation }: Props) {
         }
         onSave={() => saveWordMutation.mutate()}
         onExpand={() => setIsWordSheetExpanded((current) => !current)}
+        dismissSignal={wordSheetDismissSignal}
+        onDismiss={() => {
+          setWordSheet(null);
+          setIsWordSheetExpanded(false);
+        }}
       />
 
       <TocOverlay
@@ -615,6 +633,8 @@ function WordTranslationDrawer({
   onSpeakTranslation,
   onSave,
   onExpand,
+  dismissSignal,
+  onDismiss,
 }: {
   visible: boolean;
   expanded: boolean;
@@ -627,12 +647,105 @@ function WordTranslationDrawer({
   onSpeakTranslation: () => void;
   onSave: () => void;
   onExpand: () => void;
+  dismissSignal: number;
+  onDismiss: () => void;
 }) {
   const theme = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const collapsedHeight = 165;
   const expandedHeight = Math.round(windowHeight * 0.82);
   const drawerHeight = expanded ? expandedHeight : collapsedHeight;
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+  const contentScrollYRef = useRef(0);
+  const previousDismissSignalRef = useRef(dismissSignal);
+
+  const resetSheetPosition = useCallback(() => {
+    sheetTranslateY.stopAnimation(() => {
+      sheetTranslateY.setValue(0);
+    });
+  }, [sheetTranslateY]);
+
+  const animateBackToOpen = useCallback(() => {
+    Animated.spring(sheetTranslateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 20,
+    }).start();
+  }, [sheetTranslateY]);
+
+  const animateDismiss = useCallback(() => {
+    Animated.timing(sheetTranslateY, {
+      toValue: drawerHeight,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) {
+        return;
+      }
+
+      resetSheetPosition();
+      onDismiss();
+    });
+  }, [drawerHeight, onDismiss, resetSheetPosition, sheetTranslateY]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          const verticalDistance = Math.abs(gestureState.dy);
+          const horizontalDistance = Math.abs(gestureState.dx);
+          const isVerticalGesture = verticalDistance > horizontalDistance * 1.1;
+          const isDragDown = gestureState.dy > 6;
+
+          if (!visible || !isVerticalGesture || !isDragDown) {
+            return false;
+          }
+
+          if (expanded && contentScrollYRef.current > 0) {
+            return false;
+          }
+
+          return true;
+        },
+        onPanResponderGrant: () => {
+          sheetTranslateY.stopAnimation();
+        },
+        onPanResponderMove: (_, gestureState) => {
+          sheetTranslateY.setValue(Math.max(0, gestureState.dy));
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          const shouldDismiss = gestureState.dy > 88 || gestureState.vy > 1.1;
+
+          if (shouldDismiss) {
+            animateDismiss();
+            return;
+          }
+
+          animateBackToOpen();
+        },
+        onPanResponderTerminate: animateBackToOpen,
+      }),
+    [animateBackToOpen, animateDismiss, expanded, sheetTranslateY, visible],
+  );
+
+  useEffect(() => {
+    if (visible) {
+      resetSheetPosition();
+    }
+  }, [resetSheetPosition, visible]);
+
+  useEffect(() => {
+    if (dismissSignal === previousDismissSignalRef.current) {
+      return;
+    }
+
+    previousDismissSignalRef.current = dismissSignal;
+
+    if (visible) {
+      animateDismiss();
+    }
+  }, [animateDismiss, dismissSignal, visible]);
 
   if (!visible) {
     return null;
@@ -650,7 +763,7 @@ function WordTranslationDrawer({
         justifyContent: 'flex-end',
       }}
     >
-      <View
+      <Animated.View
         pointerEvents="auto"
         style={{
           height: drawerHeight,
@@ -662,7 +775,9 @@ function WordTranslationDrawer({
           shadowOpacity: 0.1,
           shadowRadius: 48,
           elevation: 12,
+          transform: [{ translateY: sheetTranslateY }],
         }}
+        {...panResponder.panHandlers}
       >
         <Pressable onPress={onExpand} style={{ alignItems: 'center', paddingTop: 5, height: 16 }}>
           <View
@@ -709,7 +824,17 @@ function WordTranslationDrawer({
         {expanded ? (
           <View style={{ flex: 1, paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg }}>
             <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
-              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={{ flex: 1 }}
+                scrollEventThrottle={16}
+                onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+                  contentScrollYRef.current = Math.max(
+                    0,
+                    event.nativeEvent.contentOffset.y,
+                  );
+                }}
+              >
                 <Text style={{ ...theme.typography.body, color: theme.colors.textPrimary }}>
                   {translatedContext || context || translation}
                 </Text>
@@ -740,7 +865,7 @@ function WordTranslationDrawer({
             ) : null}
           </Pressable>
         )}
-      </View>
+      </Animated.View>
     </View>
   );
 }

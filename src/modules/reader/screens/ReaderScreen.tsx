@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as Speech from 'expo-speech';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -73,6 +74,9 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
   const [wordSheet, setWordSheet] = useState<WordSheetState>(null);
   const [isWordSheetExpanded, setIsWordSheetExpanded] = useState(false);
+  const [activeSpokenWord, setActiveSpokenWord] = useState<string | null>(
+    null,
+  );
   const [paragraphSheet, setParagraphSheet] = useState<ParagraphSheetState>(null);
   const [isTocVisible, setIsTocVisible] = useState(false);
   const [selectedWord, setSelectedWord] = useState<{
@@ -213,6 +217,65 @@ export function ReaderScreen({ route, navigation }: Props) {
       await invalidateWordQueries(queryClient, bookId);
     },
   });
+
+  const stopTranslatedWordSpeech = useCallback(() => {
+    Speech.stop();
+    setActiveSpokenWord(null);
+  }, []);
+
+  const onTranslatedWordSpeechPress = useCallback(
+    (translatedWord: string) => {
+      const text = translatedWord.trim();
+
+      if (!text) {
+        return;
+      }
+
+      if (activeSpokenWord === text) {
+        stopTranslatedWordSpeech();
+        return;
+      }
+
+      Speech.stop();
+      setActiveSpokenWord(text);
+      Speech.speak(text, {
+        onDone: () =>
+          setActiveSpokenWord((current) =>
+            current === text ? null : current,
+          ),
+        onStopped: () =>
+          setActiveSpokenWord((current) =>
+            current === text ? null : current,
+          ),
+        onError: () =>
+          setActiveSpokenWord((current) =>
+            current === text ? null : current,
+          ),
+      });
+    },
+    [activeSpokenWord, stopTranslatedWordSpeech],
+  );
+
+  useEffect(
+    () => () => {
+      Speech.stop();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!wordSheet) {
+      stopTranslatedWordSpeech();
+      return;
+    }
+
+    if (
+      activeSpokenWord &&
+      activeSpokenWord !== wordSheet.word
+    ) {
+      stopTranslatedWordSpeech();
+    }
+  }, [activeSpokenWord, stopTranslatedWordSpeech, wordSheet]);
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -406,16 +469,17 @@ export function ReaderScreen({ route, navigation }: Props) {
         visible={Boolean(wordSheet)}
         expanded={isWordSheetExpanded}
         title={wordSheet?.word ?? ''}
-        subtitle={bookQuery.data.author}
         translation={wordSheet?.translation ?? ''}
         context={wordSheet?.sentence ?? ''}
         translatedContext={wordSheet?.translatedSentence ?? ''}
         isSaving={saveWordMutation.isPending}
-        onClose={() => {
-          setWordSheet(null);
-          setSelectedWord(null);
-          setIsWordSheetExpanded(false);
-        }}
+        isTranslationSpeaking={
+          Boolean(wordSheet?.word) &&
+          activeSpokenWord === wordSheet?.word
+        }
+        onSpeakTranslation={() =>
+          onTranslatedWordSpeechPress(wordSheet?.word ?? '')
+        }
         onSave={() => saveWordMutation.mutate()}
         onExpand={() => setIsWordSheetExpanded((current) => !current)}
       />
@@ -545,24 +609,24 @@ function WordTranslationDrawer({
   visible,
   expanded,
   title,
-  subtitle,
   translation,
   context,
   translatedContext,
   isSaving,
-  onClose,
+  isTranslationSpeaking,
+  onSpeakTranslation,
   onSave,
   onExpand,
 }: {
   visible: boolean;
   expanded: boolean;
   title: string;
-  subtitle: string;
   translation: string;
   context: string;
   translatedContext: string;
   isSaving: boolean;
-  onClose: () => void;
+  isTranslationSpeaking: boolean;
+  onSpeakTranslation: () => void;
   onSave: () => void;
   onExpand: () => void;
 }) {
@@ -613,31 +677,35 @@ function WordTranslationDrawer({
             }}
           />
         </Pressable>
-        <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.lg }}>
-          <Pressable onPress={onClose} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
-            <CloseIcon color={theme.colors.textPrimary} />
-          </Pressable>
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ ...theme.typography.bodyMedium, color: theme.colors.textPrimary }}>
-              {title}
-            </Text>
-            <Text style={{ ...theme.typography.caption, color: theme.colors.textSecondary }}>
-              {subtitle}
-            </Text>
+        <View style={{ paddingHorizontal: theme.spacing.xl, paddingBottom: theme.spacing.lg }}>
+          <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md }}>
+            <Pressable
+              onPress={onSpeakTranslation}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <SpeakerIcon isActive={isTranslationSpeaking} />
+            </Pressable>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ ...theme.typography.bodyMedium, color: theme.colors.textPrimary }}>
+                {title}
+              </Text>
+            </View>
+            <View style={{ width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end' }}>
+              <Pressable
+                onPress={onSave}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: theme.colors.primary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <PlusIcon color={theme.colors.white} />
+              </Pressable>
+            </View>
           </View>
-          <Pressable
-            onPress={onSave}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: theme.colors.primary,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <PlusIcon color={theme.colors.white} />
-          </Pressable>
         </View>
 
         {expanded ? (
@@ -709,10 +777,29 @@ function BookFilledIcon() {
   );
 }
 
-function CloseIcon({ color }: { color: string }) {
+function SpeakerIcon({ isActive }: { isActive: boolean }) {
+  const theme = useAppTheme();
+  const stroke = isActive ? theme.colors.primaryStrong : theme.colors.textTertiary;
+
   return (
-    <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-      <Path d="M5 5L15 15M15 5L5 15" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    <Svg width={32} height={32} viewBox="0 0 32 32" fill="none">
+      {isActive ? (
+        <Path
+          d="M26.3299 6.66665C28.2197 9.29363 29.3327 12.5168 29.3327 16C29.3327 19.4831 28.2197 22.7063 26.3299 25.3333M20.9931 10.6667C22.0476 12.1784 22.666 14.017 22.666 16C22.666 17.983 22.0476 19.8215 20.9931 21.3333M12.8451 7.15423L8.62419 11.3751C8.39359 11.6057 8.27828 11.721 8.14373 11.8035C8.02443 11.8766 7.89437 11.9305 7.75832 11.9631C7.60487 12 7.44181 12 7.11569 12H4.79935C4.05261 12 3.67924 12 3.39403 12.1453C3.14315 12.2731 2.93917 12.4771 2.81134 12.728C2.66602 13.0132 2.66602 13.3866 2.66602 14.1333V17.8667C2.66602 18.6134 2.66602 18.9868 2.81134 19.272C2.93917 19.5229 3.14315 19.7268 3.39403 19.8547C3.67924 20 4.05261 20 4.79935 20H7.11569C7.44181 20 7.60487 20 7.75832 20.0368C7.89437 20.0695 8.02443 20.1234 8.14373 20.1965C8.27828 20.2789 8.39359 20.3942 8.62419 20.6248L12.8451 24.8457C13.4163 25.4169 13.7019 25.7025 13.947 25.7218C14.1598 25.7385 14.3677 25.6524 14.5063 25.4901C14.666 25.3031 14.666 24.8992 14.666 24.0915V7.90848C14.666 7.10072 14.666 6.69685 14.5063 6.50983C14.3677 6.34755 14.1598 6.26144 13.947 6.27818C13.7019 6.29748 13.4163 6.58306 12.8451 7.15423Z"
+          stroke={stroke}
+          strokeWidth={2.66667}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <Path
+          d="M24.3268 10.6667C25.3813 12.1784 25.9997 14.017 25.9997 16C25.9997 17.983 25.3813 19.8215 24.3268 21.3333M16.1791 7.15423L11.9582 11.3751C11.7276 11.6057 11.6123 11.721 11.4777 11.8035C11.3584 11.8766 11.2284 11.9305 11.0923 11.9631C10.9389 12 10.7758 12 10.4497 12H8.13333C7.3866 12 7.01323 12 6.72801 12.1453C6.47713 12.2731 6.27316 12.4771 6.14532 12.728C6 13.0132 6 13.3866 6 14.1333V17.8667C6 18.6134 6 18.9868 6.14532 19.272C6.27316 19.5229 6.47713 19.7268 6.72801 19.8547C7.01323 20 7.3866 20 8.13333 20H10.4497C10.7758 20 10.9389 20 11.0923 20.0368C11.2284 20.0695 11.3584 20.1234 11.4777 20.1965C11.6123 20.2789 11.7276 20.3942 11.9582 20.6248L16.1791 24.8457C16.7503 25.4169 17.0358 25.7025 17.281 25.7218C17.4938 25.7385 17.7017 25.6524 17.8403 25.4901C18 25.3031 18 24.8992 18 24.0915V7.90848C18 7.10072 18 6.69685 17.8403 6.50983C17.7017 6.34755 17.4938 6.26144 17.281 6.27818C17.0358 6.29748 16.7503 6.58306 16.1791 7.15423Z"
+          stroke={stroke}
+          strokeWidth={2.66667}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
     </Svg>
   );
 }

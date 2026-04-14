@@ -354,69 +354,67 @@ export function ReaderScreen({ route, navigation }: Props) {
           paddingTop: theme.spacing.md,
           paddingBottom: 180,
         }}
-        renderItem={({ item, index }) => {
+        renderItem={({ item }) => {
           const translatedParagraph =
             paragraphSheet?.paragraphId === item.id ? paragraphSheet : null;
           const showsTranslationConnector = translatedParagraph !== null;
 
           return (
-          <View
-            style={{
-              gap: theme.spacing.md,
-              paddingHorizontal: theme.spacing.xl,
-            }}
-          >
-            <ReaderParagraph
-              paragraph={item}
-              fontSize={readerFontSize}
-              textAlignment={readerTextAlignment}
-              selectedWord={selectedWord}
-              showTranslationConnector={showsTranslationConnector}
-              onWordPress={(word, sentence, paragraphId) =>
-                translateWordMutation.mutate({ word, sentence, paragraphId })
-              }
-              onParagraphTranslatePress={(paragraphText) =>
-                translateParagraphMutation.mutate({
-                  paragraphId: item.id,
-                  text: paragraphText,
-                })
-              }
-            />
-            {translatedParagraph ? (
-              <View style={{ flexDirection: 'row', gap: theme.spacing.lg }}>
-                <View
-                  style={{
-                    width: 22,
-                    alignItems: 'center',
-                    alignSelf: 'stretch',
-                  }}
+            <View
+              style={{
+                gap: theme.spacing.md,
+              }}
+            >
+              <View style={{ paddingHorizontal: theme.spacing.xl }}>
+                <ReaderParagraph
+                  paragraph={item}
+                  fontSize={readerFontSize}
+                  textAlignment={readerTextAlignment}
+                  selectedWord={selectedWord}
+                  showTranslationConnector={showsTranslationConnector}
+                  onWordPress={(word, sentence, paragraphId) =>
+                    translateWordMutation.mutate({ word, sentence, paragraphId })
+                  }
+                  onParagraphTranslatePress={(paragraphText) =>
+                    translateParagraphMutation.mutate({
+                      paragraphId: item.id,
+                      text: paragraphText,
+                    })
+                  }
                 />
+              </View>
+              {translatedParagraph ? (
                 <View
                   style={{
-                    flex: 1,
-                    marginRight: 11,
-                    backgroundColor: theme.colors.card,
-                    borderTopLeftRadius: 12,
-                    borderBottomLeftRadius: 12,
-                    borderBottomRightRadius: 12,
-                    padding: theme.spacing.lg,
+                    paddingLeft: theme.spacing.xl,
+                    paddingRight: theme.spacing.xl + theme.spacing.lg,
                   }}
                 >
-                  <Text
+                  <View
                     style={{
-                      ...theme.typography.body,
-                      color: theme.colors.textPrimary,
-                      fontSize: readerFontSize,
-                      lineHeight: readerFontSize * 1.4,
-                      textAlign: readerTextAlignment,
+                      backgroundColor: theme.colors.card,
+                      borderTopLeftRadius: 12,
+                      borderBottomLeftRadius: 12,
+                      borderBottomRightRadius: 12,
+                      paddingVertical: theme.spacing.lg,
+                      paddingHorizontal: theme.spacing.xl,
                     }}
                   >
-                    {translatedParagraph.translation}
-                  </Text>
+                    <Text
+                      style={{
+                        ...theme.typography.body,
+                        color: theme.colors.textPrimary,
+                        fontSize: readerFontSize,
+                        lineHeight: readerFontSize * 1.4,
+                        textAlign: readerTextAlignment,
+                      }}
+                    >
+                      {translatedParagraph.translation}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ) : null}
-          </View>
+              ) : null}
+            </View>
           );
         }}
         ItemSeparatorComponent={() => <View style={{ height: theme.spacing.md }} />}

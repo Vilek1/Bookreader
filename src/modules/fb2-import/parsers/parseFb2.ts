@@ -298,9 +298,10 @@ function extractAuthorName(value: unknown): string {
 
   for (const author of authors) {
     const name = [
-      asString(author?.first),
-      asString(author?.middle),
-      asString(author?.last),
+      // FB2 commonly uses hyphenated fields (first-name, middle-name, last-name).
+      asString(author?.['first-name']) || asString(author?.first),
+      asString(author?.['middle-name']) || asString(author?.middle),
+      asString(author?.['last-name']) || asString(author?.last),
       asString(author?.nickname),
     ]
       .filter(Boolean)
